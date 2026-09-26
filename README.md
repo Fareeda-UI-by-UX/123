@@ -1,1 +1,837 @@
-# 123
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>資料結構：陣列運作原理與記憶體視覺化模擬器</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+    .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    /* Cell transition and glowing animations */
+    .cell-box {
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .pulse-ring {
+      box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.7);
+      animation: pulse 1.4s infinite cubic-bezier(0.66, 0, 0, 1);
+    }
+    @keyframes pulse {
+      to {
+        box-shadow: 0 0 0 14px rgba(99, 102, 241, 0);
+      }
+    }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased">
+
+  <!-- Toast Notification Floating System -->
+  <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-40 px-4 lg:px-8 py-3.5">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <span class="font-mono font-bold text-white text-lg">[A]</span>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+            陣列 (Array) 運作原理與記憶體模擬器
+            <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">互動教學</span>
+          </h1>
+          
+        </div>
+      </div>
+
+      <!-- Quick Status Badges -->
+      <div class="flex items-center gap-3 text-xs font-mono">
+        <div class="bg-slate-800/80 border border-slate-700/60 px-3 py-1.5 rounded-lg flex items-center gap-2">
+          <span class="text-slate-400">Base Addr:</span>
+          <span class="text-cyan-400 font-semibold" id="header-base-addr">0x1000</span>
+        </div>
+        <div class="bg-slate-800/80 border border-slate-700/60 px-3 py-1.5 rounded-lg flex items-center gap-2">
+          <span class="text-slate-400">Elem Size:</span>
+          <span class="text-emerald-400 font-semibold">4 Bytes (int)</span>
+        </div>
+        <div class="bg-slate-800/80 border border-slate-700/60 px-3 py-1.5 rounded-lg flex items-center gap-2">
+          <span class="text-slate-400">Size / Cap:</span>
+          <span class="text-amber-400 font-semibold" id="header-size-cap">5 / 8</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto w-full px-4 lg:px-8 py-6 flex-1 flex flex-col gap-6">
+
+    <!-- TOP SECTION: Memory Track & Formula Callout -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+      <div class="flex flex-wrap items-center justify-between mb-4 gap-2">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse"></span>
+          <h2 class="font-bold text-sm text-slate-200 tracking-wide uppercase">實體連續記憶體映射面板 (Physical Contiguous Memory)</h2>
+        </div>
+        <!-- Speed & Reset tools -->
+        <div class="flex items-center gap-3">
+          <label class="text-xs text-slate-400 flex items-center gap-1.5">
+            <span>動畫速度:</span>
+            <select id="speed-select" class="bg-slate-800 border border-slate-700 rounded-md px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+              <option value="1200">0.5x (慢速)</option>
+              <option value="600" selected>1.0x (標準)</option>
+              <option value="300">2.0x (快速)</option>
+            </select>
+          </label>
+          <button id="btn-reset-demo" class="px-2.5 py-1 text-xs font-medium rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
+            重設預設值
+          </button>
+          <button id="btn-clear-all" class="px-2.5 py-1 text-xs font-medium rounded-md bg-rose-950/40 hover:bg-rose-900/50 text-rose-300 border border-rose-800/50 transition">
+            清空陣列
+          </button>
+        </div>
+      </div>
+
+      <!-- Visual Array Track (Scrollable if narrow) -->
+      <div class="overflow-x-auto pb-4 pt-6 px-2">
+        <div id="memory-track" class="flex items-end justify-start min-w-[760px] gap-2 lg:gap-3">
+          <!-- Dynamically populated via JS -->
+        </div>
+      </div>
+
+      <!-- Memory Address Calculation Formula Live Card -->
+      <div id="formula-box" class="mt-4 p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 text-xs flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-2 text-slate-300">
+          <span class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 font-semibold font-mono">定址公式</span>
+          <span class="font-mono text-slate-300 font-medium">Loc(A[i]) = Base_Address + (Index × Element_Size)</span>
+        </div>
+        <div id="formula-result" class="font-mono text-cyan-300 bg-slate-900 px-3 py-1 rounded-lg border border-slate-700/80">
+          點選「隨機存取」觀察即時位址計算過程
+        </div>
+      </div>
+    </div>
+
+    <!-- MIDDLE SECTION: Control Panel & Code/Log Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- LEFT: Operation Dashboard (5 Cols) -->
+      <div class="lg:col-span-5 flex flex-col gap-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex-1 flex flex-col">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3 mb-4">
+            <h2 class="font-bold text-sm text-slate-200 uppercase tracking-wide">核心運算操作區</h2>
+            <span id="operation-badge" class="px-2 py-0.5 rounded-md text-xs font-mono font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+              O(1) 常數時間
+            </span>
+          </div>
+
+          <!-- Operation Tabs -->
+          <div class="grid grid-cols-4 gap-1 p-1 bg-slate-950 rounded-xl mb-5 text-xs font-medium">
+            <button data-tab="access" class="tab-btn py-2 rounded-lg text-center transition bg-indigo-600 text-white shadow">
+              存取 Access
+            </button>
+            <button data-tab="search" class="tab-btn py-2 rounded-lg text-center transition text-slate-400 hover:text-slate-200">
+              搜尋 Search
+            </button>
+            <button data-tab="insert" class="tab-btn py-2 rounded-lg text-center transition text-slate-400 hover:text-slate-200">
+              插入 Insert
+            </button>
+            <button data-tab="delete" class="tab-btn py-2 rounded-lg text-center transition text-slate-400 hover:text-slate-200">
+              刪除 Delete
+            </button>
+          </div>
+
+          <!-- TAB 1: Access -->
+          <div id="panel-access" class="op-panel space-y-4">
+            <p class="text-xs text-slate-400 leading-relaxed">
+              透過索引直接跳轉至記憶體，由硬體直接計算偏移量，不需走訪任何前置節點。
+            </p>
+            <div class="flex items-center gap-3">
+              <label class="text-xs text-slate-300 font-medium whitespace-nowrap">目標索引 (Index):</label>
+              <input type="number" id="access-index" min="0" max="7" value="2" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 font-mono">
+            </div>
+            <button id="btn-run-access" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm transition shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+              執行隨機存取 (O(1))
+            </button>
+          </div>
+
+          <!-- TAB 2: Search -->
+          <div id="panel-search" class="op-panel hidden space-y-4">
+            <p class="text-xs text-slate-400 leading-relaxed">
+              線性搜尋（Linear Search）：從索引 0 開始逐一比對每個記憶體欄位，直到找到數值或檢查完整個陣列。
+            </p>
+            <div class="flex items-center gap-3">
+              <label class="text-xs text-slate-300 font-medium whitespace-nowrap">搜尋目標值 (Value):</label>
+              <input type="number" id="search-val" value="56" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 font-mono">
+            </div>
+            <button id="btn-run-search" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm transition shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              執行線性搜尋 (O(n))
+            </button>
+          </div>
+
+          <!-- TAB 3: Insert -->
+          <div id="panel-insert" class="op-panel hidden space-y-4">
+            <p class="text-xs text-slate-400 leading-relaxed">
+              在連續記憶體中插入元素時，為了維持順序連續性，目標索引之後的所有元素必須由後往前逐一<strong class="text-amber-300">往右搬移 (Shift Right)</strong>。
+            </p>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs text-slate-300 font-medium block mb-1">插入位置 (Index):</label>
+                <input type="number" id="insert-index" min="0" max="7" value="2" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 font-mono">
+              </div>
+              <div>
+                <label class="text-xs text-slate-300 font-medium block mb-1">插入數值 (Value):</label>
+                <input type="number" id="insert-val" value="99" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 font-mono">
+              </div>
+            </div>
+            <button id="btn-run-insert" class="w-full py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-medium text-sm transition shadow-lg shadow-amber-600/20 flex items-center justify-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+              執行插入並觀察位移 (O(n))
+            </button>
+          </div>
+
+          <!-- TAB 4: Delete -->
+          <div id="panel-delete" class="op-panel hidden space-y-4">
+            <p class="text-xs text-slate-400 leading-relaxed">
+              刪除指定位置元素後，為確保陣列記憶體緊湊不留空隙，後方所有元素必須依序<strong class="text-rose-400">往前補齊 (Shift Left)</strong>。
+            </p>
+            <div class="flex items-center gap-3">
+              <label class="text-xs text-slate-300 font-medium whitespace-nowrap">欲刪除索引 (Index):</label>
+              <input type="number" id="delete-index" min="0" max="7" value="1" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 font-mono">
+            </div>
+            <button id="btn-run-delete" class="w-full py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-medium text-sm transition shadow-lg shadow-rose-600/20 flex items-center justify-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+              執行刪除並觀察補齊 (O(n))
+            </button>
+          </div>
+
+          <!-- Quick Tools Footnote -->
+          <div class="mt-auto pt-4 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+            <span>輔助操作：</span>
+            <button id="btn-fill-random" class="hover:text-indigo-400 underline transition">隨機填滿陣列</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Code Execution & Step-by-Step Log (7 Cols) -->
+      <div class="lg:col-span-7 flex flex-col gap-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col h-full">
+
+          <!-- Synchronized Code Snippet -->
+          <div class="mb-4">
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
+                <span class="text-xs font-semibold text-slate-300 uppercase tracking-wide">底層對應演算法 (C/C++ 虛擬碼)</span>
+              </div>
+              <span id="code-lang-tag" class="text-[11px] font-mono text-slate-500">C++ / Memory Op</span>
+            </div>
+            <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-xs overflow-x-auto text-slate-300">
+              <pre id="code-display" class="space-y-0.5 leading-relaxed"></pre>
+            </div>
+          </div>
+
+          <!-- Step Logs Feed -->
+          <div class="flex-1 flex flex-col min-h-[180px]">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-semibold text-slate-300 uppercase tracking-wide flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                即時執行歷程解說 (Execution Steps Log)
+              </span>
+              <button id="btn-clear-log" class="text-[11px] text-slate-500 hover:text-slate-300 transition">清空日誌</button>
+            </div>
+            <div id="step-logs" class="flex-1 bg-slate-950/70 border border-slate-800 rounded-xl p-3 font-mono text-xs overflow-y-auto max-h-[220px] space-y-1.5 text-slate-300">
+              <div class="text-slate-500 italic">系統已就緒，請點選左側運算功能開始執行演練...</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- BOTTOM SECTION: Educational Comparison & Core Properties -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="bg-slate-900/60 border border-slate-800 p-4 rounded-xl">
+        <div class="flex items-center gap-2 text-indigo-400 font-semibold text-xs uppercase mb-1">
+          <span>⚡ 為何存取只需 O(1)？</span>
+        </div>
+        <p class="text-xs text-slate-400 leading-relaxed">
+          因為記憶體具備「隨機存取 (Random Access)」特性。給定陣列起始位址與單一元素大小，硬體 ALU 透過乘加指令即可在一個 CPU 週期內直達該位址。
+        </p>
+      </div>
+      <div class="bg-slate-900/60 border border-slate-800 p-4 rounded-xl">
+        <div class="flex items-center gap-2 text-amber-400 font-semibold text-xs uppercase mb-1">
+          <span>🔄 為何插入/刪除是 O(n)？</span>
+        </div>
+        <p class="text-xs text-slate-400 leading-relaxed">
+          陣列要求記憶體必須連貫。若在中間插入或刪除，為了填補空缺或挪出位置，最差情況下必須搬移 $n$ 個相鄰元素，造成線性時間開銷。
+        </p>
+      </div>
+      <div class="bg-slate-900/60 border border-slate-800 p-4 rounded-xl">
+        <div class="flex items-center gap-2 text-emerald-400 font-semibold text-xs uppercase mb-1">
+          <span>🚀 快取局部性 (Cache Locality)</span>
+        </div>
+        <p class="text-xs text-slate-400 leading-relaxed">
+          由於元素在實體記憶體中相鄰，CPU 讀取陣列時能高效率載入整條 Cache Line，因此循序走訪陣列的速度通常大幅優於分散節點的鏈結串列。
+        </p>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    // Constants and state
+    const CAPACITY = 8;
+    const BASE_ADDRESS = 0x1000;
+    const ELEMENT_SIZE = 4; // bytes (e.g. 32-bit signed int)
+
+    // Initial array dataset (length = 5, capacity = 8)
+    let currentArray = [12, 45, 78, 23, 56, null, null, null];
+    let isRunning = false;
+    let currentTab = 'access';
+
+    // Sleep helper respecting speed control
+    function sleep() {
+      const delay = parseInt(document.getElementById('speed-select').value) || 600;
+      return new Promise(resolve => setTimeout(resolve, delay));
+    }
+
+    // Toast helper instead of alert()
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      const colors = {
+        info: 'bg-indigo-600 text-white border-indigo-400',
+        success: 'bg-emerald-600 text-white border-emerald-400',
+        warn: 'bg-amber-600 text-white border-amber-400',
+        error: 'bg-rose-600 text-white border-rose-400'
+      };
+      toast.className = `px-4 py-2.5 rounded-xl text-xs font-medium shadow-2xl border flex items-center gap-2 pointer-events-auto transition-all duration-300 transform translate-y-2 opacity-0 ${colors[type] || colors.info}`;
+      toast.innerHTML = `<span>${message}</span>`;
+      container.appendChild(toast);
+
+      requestAnimationFrame(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      });
+
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-2');
+        setTimeout(() => toast.remove(), 300);
+      }, 3200);
+    }
+
+    // Helper to log steps
+    function logStep(text, type = 'normal') {
+      const logContainer = document.getElementById('step-logs');
+      const time = new Date().toLocaleTimeString('zh-TW', { hour12: false });
+      const entry = document.createElement('div');
+      
+      let badge = '<span class="text-slate-500">[' + time + ']</span> ';
+      if (type === 'highlight') badge += '<span class="text-cyan-400">➜</span> ';
+      else if (type === 'success') badge += '<span class="text-emerald-400">✔</span> ';
+      else if (type === 'warn') badge += '<span class="text-amber-400">⚠</span> ';
+      else if (type === 'shift') badge += '<span class="text-orange-400">⇆</span> ';
+
+      entry.className = 'leading-relaxed border-l-2 pl-2 ' + 
+        (type === 'success' ? 'border-emerald-500 text-emerald-200' :
+         type === 'warn' ? 'border-amber-500 text-amber-200' :
+         type === 'shift' ? 'border-orange-500 text-orange-200' :
+         type === 'highlight' ? 'border-cyan-500 text-cyan-200' : 'border-slate-700 text-slate-300');
+         
+      entry.innerHTML = `${badge}${text}`;
+      logContainer.appendChild(entry);
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+
+    const CODE_SNIPPETS = {
+      access: [
+        { code: "int access(int arr[], int index) {", line: 1 },
+        { code: "    // 硬體直接以定址公式計算記憶體位址: 0x1000 + index * 4", line: 2 },
+        { code: "    int* target_address = (int*)((char*)arr + index * sizeof(int));", line: 3 },
+        { code: "    return *target_address; // 一步直達，時間複雜度 O(1)", line: 4 },
+        { code: "}", line: 5 }
+      ],
+      search: [
+        { code: "int linear_search(int arr[], int size, int target) {", line: 1 },
+        { code: "    for (int i = 0; i < size; i++) {", line: 2 },
+        { code: "        if (arr[i] == target) {", line: 3 },
+        { code: "            return i; // 找到目標，回傳索引", line: 4 },
+        { code: "        }", line: 5 },
+        { code: "    }", line: 6 },
+        { code: "    return -1; // 走訪整圈未找到，最差 O(n)", line: 7 },
+        { code: "}", line: 8 }
+      ],
+      insert: [
+        { code: "bool insert(int arr[], int &size, int index, int val) {", line: 1 },
+        { code: "    if (size >= CAPACITY || index < 0 || index > size) return false;", line: 2 },
+        { code: "    // 為保持記憶體連續，由後往前依序往右挪動", line: 3 },
+        { code: "    for (int i = size - 1; i >= index; i--) {", line: 4 },
+        { code: "        arr[i + 1] = arr[i]; // 位移操作", line: 5 },
+        { code: "    }", line: 6 },
+        { code: "    arr[index] = val; // 放入新值", line: 7 },
+        { code: "    size++; return true; // 時間複雜度 O(n)", line: 8 },
+        { code: "}", line: 9 }
+      ],
+      delete: [
+        { code: "bool delete_at(int arr[], int &size, int index) {", line: 1 },
+        { code: "    if (index < 0 || index >= size) return false;", line: 2 },
+        { code: "    // 將目標後方的所有元素依序往前挪動覆蓋", line: 3 },
+        { code: "    for (int i = index; i < size - 1; i++) {", line: 4 },
+        { code: "        arr[i] = arr[i + 1]; // 往前遞補", line: 5 },
+        { code: "    }", line: 6 },
+        { code: "    arr[size - 1] = 0; // 清空末端空出之位置", line: 7 },
+        { code: "    size--; return true; // 時間複雜度 O(n)", line: 8 },
+        { code: "}", line: 9 }
+      ]
+    };
+
+    function renderCode(activeLineNum = null) {
+      const container = document.getElementById('code-display');
+      const lines = CODE_SNIPPETS[currentTab] || [];
+      container.innerHTML = '';
+
+      lines.forEach(item => {
+        const lineDiv = document.createElement('div');
+        const isActive = activeLineNum === item.line;
+        lineDiv.className = `flex items-center px-2 py-0.5 rounded transition ${isActive ? 'bg-indigo-600/40 text-cyan-200 border-l-2 border-cyan-400 font-bold' : 'text-slate-400'}`;
+        lineDiv.innerHTML = `
+          <span class="w-6 text-slate-600 select-none text-right pr-3">${item.line}</span>
+          <span class="whitespace-pre">${escapeHtml(item.code)}</span>
+        `;
+        container.appendChild(lineDiv);
+      });
+    }
+
+    function escapeHtml(text) {
+      return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function calculateSize() {
+      let count = 0;
+      for (let i = 0; i < CAPACITY; i++) {
+        if (currentArray[i] !== null) count++;
+      }
+      return count;
+    }
+
+    function renderMemoryTrack(customStates = {}) {
+      const track = document.getElementById('memory-track');
+      track.innerHTML = '';
+
+      const currentSize = calculateSize();
+      document.getElementById('header-size-cap').innerText = `${currentSize} / ${CAPACITY}`;
+
+      for (let i = 0; i < CAPACITY; i++) {
+        const val = currentArray[i];
+        const addrHex = '0x' + (BASE_ADDRESS + i * ELEMENT_SIZE).toString(16).toUpperCase();
+        const state = customStates[i] || 'idle'; // idle, active, found, shifting, target
+
+        // Cell container
+        const col = document.createElement('div');
+        col.className = 'flex-1 flex flex-col items-center gap-1.5 select-none relative';
+
+        // Pointer marker above cell
+        const ptr = document.createElement('div');
+        ptr.className = 'h-5 flex items-center justify-center text-xs font-mono font-bold transition';
+        if (state === 'active') {
+          ptr.innerHTML = '<span class="text-amber-400 animate-bounce">↓ ptr</span>';
+        } else if (state === 'found') {
+          ptr.innerHTML = '<span class="text-emerald-400 font-bold">★ FOUND</span>';
+        } else if (state === 'target') {
+          ptr.innerHTML = '<span class="text-cyan-400 font-bold">🎯 TARGET</span>';
+        } else if (state === 'shifting') {
+          ptr.innerHTML = '<span class="text-orange-400 font-bold">⇄ MOVE</span>';
+        } else {
+          ptr.innerHTML = '<span class="text-transparent">.</span>';
+        }
+        col.appendChild(ptr);
+
+        // Box element
+        const box = document.createElement('div');
+        let bgStyle = 'bg-slate-900 border-slate-700 text-slate-100';
+        let extraClasses = '';
+
+        if (val === null) {
+          bgStyle = 'bg-slate-950/60 border-slate-800 border-dashed text-slate-600';
+        } else {
+          if (state === 'active') {
+            bgStyle = 'bg-amber-500/20 border-amber-400 text-amber-200 pulse-ring';
+          } else if (state === 'found') {
+            bgStyle = 'bg-emerald-500/20 border-emerald-400 text-emerald-300 shadow-lg shadow-emerald-500/20';
+          } else if (state === 'target') {
+            bgStyle = 'bg-cyan-500/20 border-cyan-400 text-cyan-200';
+          } else if (state === 'shifting') {
+            bgStyle = 'bg-orange-500/20 border-orange-400 text-orange-200 transform scale-105';
+          } else {
+            bgStyle = 'bg-slate-800/90 border-slate-700 text-slate-100';
+          }
+        }
+
+        box.className = `cell-box w-full h-16 rounded-xl border flex flex-col items-center justify-center relative font-mono shadow-md ${bgStyle} ${extraClasses}`;
+        box.innerHTML = `
+          <span class="text-base font-bold ${val === null ? 'text-slate-600' : 'text-white'}">${val !== null ? val : 'NULL'}</span>
+          <span class="text-[10px] text-slate-500 font-mono mt-0.5">4B int</span>
+        `;
+        col.appendChild(box);
+
+        // Index label
+        const idxLabel = document.createElement('div');
+        idxLabel.className = 'font-mono text-xs font-semibold px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-300';
+        idxLabel.innerText = `[${i}]`;
+        col.appendChild(idxLabel);
+
+        // Memory Address
+        const addrLabel = document.createElement('div');
+        addrLabel.className = 'font-mono text-[11px] text-cyan-400/80';
+        addrLabel.innerText = addrHex;
+        col.appendChild(addrLabel);
+
+        track.appendChild(col);
+      }
+    }
+
+    async function executeAccess() {
+      if (isRunning) return;
+      const idxInput = document.getElementById('access-index');
+      const index = parseInt(idxInput.value);
+
+      if (isNaN(index) || index < 0 || index >= CAPACITY) {
+        showToast(`索引必須介於 0 與 ${CAPACITY - 1} 之間！`, 'warn');
+        return;
+      }
+
+      isRunning = true;
+      toggleButtons(false);
+      logStep(`=== 開始執行隨機存取：目標索引 [${index}] ===`, 'highlight');
+
+      // Highlight code line 3
+      renderCode(3);
+      const computedAddr = BASE_ADDRESS + index * ELEMENT_SIZE;
+      const hexAddr = '0x' + computedAddr.toString(16).toUpperCase();
+
+      // Show formula calculation
+      const formulaEl = document.getElementById('formula-result');
+      formulaEl.innerHTML = `
+        <span class="text-white">Loc(A[${index}])</span> = 
+        <span class="text-cyan-400">0x1000</span> + (<span class="text-amber-400">${index}</span> × <span class="text-emerald-400">4</span>) = 
+        <span class="text-emerald-400 font-bold underline">${hexAddr}</span>
+      `;
+
+      logStep(`硬體代入公式計算：0x1000 + (${index} × 4) = ${hexAddr}`, 'highlight');
+      await sleep();
+
+      // Highlight code line 4
+      renderCode(4);
+      const states = {};
+      states[index] = 'found';
+      renderMemoryTrack(states);
+
+      const val = currentArray[index];
+      if (val !== null) {
+        logStep(`成功命中記憶體 ${hexAddr}！讀取到數值：${val}`, 'success');
+        showToast(`存取成功！A[${index}] = ${val} (位址: ${hexAddr})`, 'success');
+      } else {
+        logStep(`成功定位記憶體 ${hexAddr}，但該位置目前為空 (NULL)`, 'warn');
+        showToast(`已定位至 ${hexAddr}，數值為空`, 'info');
+      }
+
+      await sleep();
+      renderCode(null);
+      isRunning = false;
+      toggleButtons(true);
+    }
+
+    async function executeSearch() {
+      if (isRunning) return;
+      const valInput = document.getElementById('search-val');
+      const target = parseInt(valInput.value);
+
+      if (isNaN(target)) {
+        showToast("請輸入有效的整數搜尋值！", 'warn');
+        return;
+      }
+
+      isRunning = true;
+      toggleButtons(false);
+      logStep(`=== 開始執行線性搜尋：尋找目標值 ${target} ===`, 'highlight');
+
+      const size = calculateSize();
+      let foundIndex = -1;
+
+      renderCode(2);
+
+      for (let i = 0; i < size; i++) {
+        // Active pointer at i
+        renderCode(3);
+        const states = {};
+        states[i] = 'active';
+        renderMemoryTrack(states);
+        
+        const currVal = currentArray[i];
+        const addrHex = '0x' + (BASE_ADDRESS + i * ELEMENT_SIZE).toString(16).toUpperCase();
+        logStep(`檢視索引 [${i}] (位址 ${addrHex})：數值 ${currVal} ${currVal === target ? '==' : '!='} ${target}`);
+
+        await sleep();
+
+        if (currVal === target) {
+          foundIndex = i;
+          renderCode(4);
+          states[i] = 'found';
+          renderMemoryTrack(states);
+          logStep(`比對成功！在索引 [${i}] 找到數值 ${target}，共比對 ${i + 1} 次`, 'success');
+          showToast(`找到了！位於索引 [${i}]，位址 ${addrHex}`, 'success');
+          break;
+        }
+      }
+
+      if (foundIndex === -1) {
+        renderCode(7);
+        logStep(`已檢查完全部 ${size} 個已存放元素，未找到目標值 ${target} (最差情況需比對全體 O(n))`, 'warn');
+        showToast(`未找到目標值 ${target}`, 'error');
+        renderMemoryTrack({});
+      }
+
+      await sleep();
+      renderCode(null);
+      isRunning = false;
+      toggleButtons(true);
+    }
+
+    async function executeInsert() {
+      if (isRunning) return;
+      const idxInput = document.getElementById('insert-index');
+      const valInput = document.getElementById('insert-val');
+      const targetIdx = parseInt(idxInput.value);
+      const val = parseInt(valInput.value);
+
+      const currentSize = calculateSize();
+
+      if (isNaN(targetIdx) || targetIdx < 0 || targetIdx >= CAPACITY) {
+        showToast(`插入索引必須在 0 到 ${CAPACITY - 1} 之間`, 'warn');
+        return;
+      }
+      if (isNaN(val)) {
+        showToast("請輸入欲插入的數值", 'warn');
+        return;
+      }
+      if (currentSize >= CAPACITY) {
+        showToast("陣列容量已滿 (Full)，無法再插入新元素！", 'error');
+        logStep("插入失敗：陣列已滿 (Overflow)", 'warn');
+        return;
+      }
+      if (targetIdx > currentSize) {
+        showToast(`為維持連續性，插入位置不可大於當前長度 (${currentSize})`, 'warn');
+        return;
+      }
+
+      isRunning = true;
+      toggleButtons(false);
+      logStep(`=== 開始執行插入：在索引 [${targetIdx}] 插入數值 ${val} ===`, 'highlight');
+
+      renderCode(4);
+      logStep(`檢查陣列大小：目前大小為 ${currentSize}，容量上限為 ${CAPACITY}`);
+      await sleep();
+
+      // Shift right loop from currentSize - 1 down to targetIdx
+      for (let i = currentSize - 1; i >= targetIdx; i--) {
+        renderCode(5);
+        logStep(`元素位移：將索引 [${i}] 的數值 ${currentArray[i]} 向右搬移至 [${i + 1}]`, 'shift');
+        
+        // Show shifting animation
+        const states = {};
+        states[i] = 'shifting';
+        states[i + 1] = 'target';
+        renderMemoryTrack(states);
+        await sleep();
+
+        // Perform move
+        currentArray[i + 1] = currentArray[i];
+        renderMemoryTrack(states);
+        await sleep();
+      }
+
+      // Now insert the value
+      renderCode(7);
+      currentArray[targetIdx] = val;
+      const states = {};
+      states[targetIdx] = 'found';
+      renderMemoryTrack(states);
+
+      logStep(`成功在索引 [${targetIdx}] 寫入新值 ${val}！`, 'success');
+      showToast(`插入成功！數值 ${val} 已置於索引 [${targetIdx}]`, 'success');
+
+      renderCode(8);
+      await sleep();
+
+      renderCode(null);
+      renderMemoryTrack({});
+      isRunning = false;
+      toggleButtons(true);
+    }
+
+    async function executeDelete() {
+      if (isRunning) return;
+      const idxInput = document.getElementById('delete-index');
+      const targetIdx = parseInt(idxInput.value);
+      const currentSize = calculateSize();
+
+      if (isNaN(targetIdx) || targetIdx < 0 || targetIdx >= currentSize) {
+        showToast(`刪除索引必須在有效範圍 0 到 ${Math.max(0, currentSize - 1)} 之間`, 'warn');
+        return;
+      }
+      if (currentSize === 0) {
+        showToast("陣列目前為空，無元素可刪除！", 'error');
+        return;
+      }
+
+      isRunning = true;
+      toggleButtons(false);
+      logStep(`=== 開始執行刪除：刪除索引 [${targetIdx}] 的元素 (${currentArray[targetIdx]}) ===`, 'highlight');
+
+      renderCode(2);
+      const states = {};
+      states[targetIdx] = 'target';
+      renderMemoryTrack(states);
+      await sleep();
+
+      // Shift left loop from targetIdx to currentSize - 2
+      for (let i = targetIdx; i < currentSize - 1; i++) {
+        renderCode(5);
+        logStep(`向前補位：將索引 [${i + 1}] 的元素 (${currentArray[i + 1]}) 往前複製到 [${i}]`, 'shift');
+
+        states[i] = 'target';
+        states[i + 1] = 'shifting';
+        renderMemoryTrack(states);
+        await sleep();
+
+        currentArray[i] = currentArray[i + 1];
+        renderMemoryTrack(states);
+        await sleep();
+      }
+
+      // Clear the last element
+      renderCode(7);
+      logStep(`清空末端 [${currentSize - 1}] 的冗餘殘留資料`, 'shift');
+      currentArray[currentSize - 1] = null;
+      renderMemoryTrack({});
+      await sleep();
+
+      renderCode(8);
+      logStep(`刪除與遞補完成！新陣列長度為 ${currentSize - 1}`, 'success');
+      showToast(`刪除成功！後續元素已往前緊湊補齊`, 'success');
+
+      await sleep();
+      renderCode(null);
+      renderMemoryTrack({});
+      isRunning = false;
+      toggleButtons(true);
+    }
+
+    function toggleButtons(enable) {
+      const buttons = document.querySelectorAll('button:not(#btn-clear-log)');
+      const inputs = document.querySelectorAll('input, select');
+      buttons.forEach(btn => btn.disabled = !enable);
+      inputs.forEach(inp => inp.disabled = !enable);
+    }
+
+    // Tab switcher
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (isRunning) return;
+        const tab = btn.getAttribute('data-tab');
+        currentTab = tab;
+
+        // UI Tabs update
+        document.querySelectorAll('.tab-btn').forEach(b => {
+          b.className = 'tab-btn py-2 rounded-lg text-center transition text-slate-400 hover:text-slate-200';
+        });
+        btn.className = 'tab-btn py-2 rounded-lg text-center transition bg-indigo-600 text-white shadow';
+
+        // Panels update
+        document.querySelectorAll('.op-panel').forEach(p => p.classList.add('hidden'));
+        document.getElementById(`panel-${tab}`).classList.remove('hidden');
+
+        // Badge update
+        const badge = document.getElementById('operation-badge');
+        if (tab === 'access') {
+          badge.className = 'px-2 py-0.5 rounded-md text-xs font-mono font-medium bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+          badge.innerText = 'O(1) 常數時間';
+        } else {
+          badge.className = 'px-2 py-0.5 rounded-md text-xs font-mono font-medium bg-amber-500/20 text-amber-400 border border-amber-500/30';
+          badge.innerText = 'O(n) 線性時間';
+        }
+
+        renderCode();
+      });
+    });
+
+    // Button Click Listeners
+    document.getElementById('btn-run-access').addEventListener('click', executeAccess);
+    document.getElementById('btn-run-search').addEventListener('click', executeSearch);
+    document.getElementById('btn-run-insert').addEventListener('click', executeInsert);
+    document.getElementById('btn-run-delete').addEventListener('click', executeDelete);
+
+    // Reset Demo
+    document.getElementById('btn-reset-demo').addEventListener('click', () => {
+      if (isRunning) return;
+      currentArray = [12, 45, 78, 23, 56, null, null, null];
+      renderMemoryTrack();
+      logStep("已重設為預設範例陣列 (長度 5，容量 8)");
+      showToast("已重置資料陣列", 'info');
+    });
+
+    // Clear All
+    document.getElementById('btn-clear-all').addEventListener('click', () => {
+      if (isRunning) return;
+      currentArray = [null, null, null, null, null, null, null, null];
+      renderMemoryTrack();
+      logStep("已清空陣列內所有元素");
+      showToast("陣列已清空", 'info');
+    });
+
+    // Fill Random
+    document.getElementById('btn-fill-random').addEventListener('click', () => {
+      if (isRunning) return;
+      for (let i = 0; i < CAPACITY; i++) {
+        currentArray[i] = Math.floor(Math.random() * 90 + 10);
+      }
+      renderMemoryTrack();
+      logStep("已隨機填滿陣列的所有記憶體區塊");
+      showToast("已隨機填滿陣列", 'success');
+    });
+
+    // Clear Log
+    document.getElementById('btn-clear-log').addEventListener('click', () => {
+      document.getElementById('step-logs').innerHTML = '<div class="text-slate-500 italic">日誌已清空...</div>';
+    });
+
+    window.addEventListener('DOMContentLoaded', () => {
+      renderMemoryTrack();
+      renderCode();
+      logStep("陣列模擬器初始化完畢。基底位址 = 0x1000，元素大小 = 4 Bytes。");
+    });
+  </script>
+</body>
+</html>
